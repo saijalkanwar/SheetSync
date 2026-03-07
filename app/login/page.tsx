@@ -215,6 +215,7 @@ function LoginContent() {
                 }}
                 onFocus={e => !nameError && (e.target.style.borderColor = '#1a73e8')}
                 onBlur={e => !nameError && (e.target.style.borderColor = '#dadce0')}
+                suppressHydrationWarning
               />
               {nameError && (
                 <span style={{ fontSize: 12, color: '#ea4335', marginTop: 4, display: 'block' }}>{nameError}</span>

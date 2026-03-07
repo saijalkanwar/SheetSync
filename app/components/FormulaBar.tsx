@@ -115,6 +115,7 @@ export default function FormulaBar({ cellAddress, value, onValueChange, onConfir
           color: isFormula ? 'var(--primary)' : 'var(--text-primary)',
           background: 'transparent',
         }}
+        suppressHydrationWarning
       />
     </div>
   );

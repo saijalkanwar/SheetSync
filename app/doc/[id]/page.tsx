@@ -1,29 +1,22 @@
 'use client';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, use } from 'react';
 import Navbar from '../../components/Navbar';
 import Toolbar from '../../components/Toolbar';
 import FormulaBar from '../../components/FormulaBar';
 import Grid, { type GridData, type CellFormat } from '../../components/Grid';
 import PresenceBar, { type Collaborator } from '../../components/PresenceBar';
-import SaveIndicator, { type SaveState } from '../../components/SaveIndicator';
+import SaveIndicator from '../../components/SaveIndicator';
 import NameModal from '../../components/NameModal';
 import { useAuth } from '@/lib/auth-context';
-
-// ── Mock collaborator data ────────────────────────────────
-const MOCK_COLLABORATORS: Collaborator[] = [
-  { id: 'user-2', name: 'Alex',  color: '#1a73e8', initial: 'A', cell: 'C4' },
-  { id: 'user-3', name: 'Maria', color: '#059669', initial: 'M', cell: 'F7' },
-];
-
-const MOCK_REMOTE_CURSORS = new Map(
-  MOCK_COLLABORATORS.map(c => [c.id, { cell: c.cell ?? '', color: c.color, name: c.name }])
-);
+import { useSpreadsheet } from '@/lib/useSpreadsheet';
+import { usePresence } from '@/lib/usePresence';
 
 // ── Sheet tab ─────────────────────────────────────────────
 interface Sheet { id: string; name: string; }
 
 // ── Editor ────────────────────────────────────────────────
-export default function EditorPage({ params }: { params: { id: string } }) {
+export default function EditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: docId } = use(params);
   const { user, continueAsGuest } = useAuth();
 
   // Guest-name override (only used when not already authenticated)
@@ -31,55 +24,60 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const showNameModal = !user && !guestUser;
 
   const activeUser = user
-    ? { name: user.name, color: user.color, initial: user.initial }
-    : guestUser;
+    ? { uid: user.uid, name: user.name, color: user.color, initial: user.initial }
+    : guestUser
+    ? { uid: `guest-${guestUser.name}`, name: guestUser.name, color: guestUser.color, initial: guestUser.initial }
+    : null;
 
-  const [gridData, setGridData]         = useState<GridData>(new Map());
-  const [selectedCell, setSelectedCell] = useState<string>('A1');
-  const [formulaValue, setFormulaValue] = useState('');
-  const [saveState, setSaveState]       = useState<SaveState>('saved');
-  const [sheets, setSheets]             = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
-  const [activeSheet, setActiveSheet]   = useState('sheet-1');
-  const [colWidths, setColWidths]       = useState<Map<number, number>>(new Map());
+  // ── Firestore real-time sync ───────────────────────────
+  const { gridData, title, saveState, updateCell, renameDocument, setGridData } = useSpreadsheet(
+    docId,
+    activeUser?.uid ?? 'anonymous',
+    activeUser?.name ?? 'Guest'
+  );
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Local UI state ─────────────────────────────────────
+  const [selectedCell, setSelectedCell]  = useState<string>('A1');
+  const [formulaValue, setFormulaValue]  = useState('');
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [sheets, setSheets]              = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
+  const [activeSheet, setActiveSheet]    = useState('sheet-1');
+  const [colWidths, setColWidths]        = useState<Map<number, number>>(new Map());
 
+  // Local formula editing tracker (prevents Firestore overwrites mid-edit)
+  const formulaEditing = useRef(false);
+
+  // ── Presence ───────────────────────────────────────────
+  usePresence(docId, activeUser, selectedCell, setCollaborators);
+
+  // ── Cell change ────────────────────────────────────────
   const handleCellChange = useCallback((cellId: string, raw: string, computed: string) => {
-    setGridData(prev => {
-      const next = new Map(prev);
-      if (!raw && !computed) {
-        next.delete(cellId);
-      } else {
-        const existing = prev.get(cellId);
-        next.set(cellId, { raw, computed, format: existing?.format });
-      }
-      return next;
-    });
-    setSaveState('saving');
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => setSaveState('saved'), 1200);
-  }, []);
+    const existingFormat = gridData.get(cellId)?.format;
+    updateCell(cellId, raw, computed, existingFormat);
+  }, [gridData, updateCell]);
 
+  // ── Format operations ──────────────────────────────────
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
-    setGridData(prev => {
-      const next = new Map(prev);
-      const existing = prev.get(selectedCell) ?? { raw: '', computed: '' };
-      next.set(selectedCell, { ...existing, format: { ...existing.format, ...patch } });
-      return next;
-    });
-  }, [selectedCell]);
+    const existing = gridData.get(selectedCell) ?? { raw: '', computed: '' };
+    const newFormat = { ...existing.format, ...patch };
+    updateCell(selectedCell, existing.raw, existing.computed, newFormat);
+  }, [selectedCell, gridData, updateCell]);
 
   const handleSelectionChange = useCallback((cellId: string) => {
     setSelectedCell(cellId);
-    const cell = gridData.get(cellId);
-    setFormulaValue(cell?.raw ?? '');
+    if (!formulaEditing.current) {
+      const cell = gridData.get(cellId);
+      setFormulaValue(cell?.raw ?? '');
+    }
   }, [gridData]);
 
   const handleFormulaConfirm = useCallback(() => {
     const raw = formulaValue;
+    formulaEditing.current = false;
     handleCellChange(selectedCell, raw, raw.startsWith('=') ? raw : raw);
   }, [formulaValue, selectedCell, handleCellChange]);
 
+  // ── Sheet tabs ─────────────────────────────────────────
   const addSheet = () => {
     const id = `sheet-${Date.now()}`;
     const n  = sheets.length + 1;
@@ -91,6 +89,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     setColWidths(prev => { const m = new Map(prev); m.set(col, width); return m; });
   }, []);
 
+  // ── Export ─────────────────────────────────────────────
   const handleExport = () => {
     let csv = '';
     for (let r = 0; r < 100; r++) {
@@ -106,20 +105,27 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = `spreadsheet_${params.id}.csv`; a.click();
+    a.href = url; a.download = `${title.replace(/\s+/g, '_')}_${docId}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
   const existingCell = gridData.get(selectedCell);
 
+  // Build remote cursors map for the Grid
+  const remoteCursors = new Map<string, { cell: string; color: string; name: string }>();
+  collaborators.forEach(c => {
+    if (c.cell) remoteCursors.set(c.id, { cell: c.cell, color: c.color, name: c.name });
+  });
+
+  // All collaborators include self
   const allCollaborators: Collaborator[] = [
     ...(activeUser ? [{ id: 'me', name: `${activeUser.name} (you)`, color: activeUser.color, initial: activeUser.initial }] : []),
-    ...MOCK_COLLABORATORS,
+    ...collaborators,
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Name modal — only shown when there's no authenticated user and no guest name yet */}
+      {/* Name modal — shown only when no authenticated user and no guest name yet */}
       {showNameModal && (
         <NameModal
           onConfirm={(name, color) => {
@@ -129,8 +135,11 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         />
       )}
 
-      {/* Top bar */}
-      <Navbar docTitle="Untitled spreadsheet" />
+      {/* Top bar — title is editable and persists to Firestore */}
+      <Navbar
+        docTitle={title}
+        onTitleChange={renameDocument}
+      />
 
       {/* Doc action bar */}
       <div style={{
@@ -158,11 +167,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         ))}
 
         <div style={{ flex: 1 }} />
-
         <PresenceBar collaborators={allCollaborators} />
-
         <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 6px' }} />
-
         <SaveIndicator state={saveState} />
       </div>
 
@@ -184,9 +190,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       <FormulaBar
         cellAddress={selectedCell}
         value={formulaValue}
-        onValueChange={setFormulaValue}
+        onValueChange={v => { formulaEditing.current = true; setFormulaValue(v); }}
         onConfirm={handleFormulaConfirm}
-        onCancel={() => setFormulaValue(gridData.get(selectedCell)?.raw ?? '')}
+        onCancel={() => { formulaEditing.current = false; setFormulaValue(gridData.get(selectedCell)?.raw ?? ''); }}
       />
 
       {/* Grid */}
@@ -196,7 +202,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         onSelectionChange={handleSelectionChange}
         colWidths={colWidths}
         onColWidthChange={handleColWidthChange}
-        remoteCursors={MOCK_REMOTE_CURSORS}
+        remoteCursors={remoteCursors}
       />
 
       {/* Sheet tabs */}
@@ -226,7 +232,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             {sheet.name}
           </button>
         ))}
-
         <button
           onClick={addSheet}
           title="Add sheet"

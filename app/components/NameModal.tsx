@@ -76,6 +76,7 @@ export default function NameModal({ onConfirm }: NameModalProps) {
             }}
             onFocus={e => !error && (e.target.style.borderColor = 'var(--primary)')}
             onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}
+            suppressHydrationWarning
           />
           {error && (
             <span style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, display: 'block' }}>

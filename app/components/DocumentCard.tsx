@@ -8,6 +8,7 @@ export interface DocMeta {
   ownerName: string;
   ownerColor: string;
   ownerInitial: string;
+  ownerId?: string;
 }
 
 const RELATIVE_TIME = (date: Date): string => {

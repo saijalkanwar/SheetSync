@@ -1,13 +1,27 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
-export default function Navbar({ docTitle }: { docTitle?: string }) {
+interface NavbarProps {
+  docTitle?: string;
+  onTitleChange?: (newTitle: string) => void;
+}
+
+export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
   const { user, signInWithGoogle, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [localTitle, setLocalTitle] = useState(docTitle ?? '');
   const router = useRouter();
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  // Keep local title in sync when Firestore loads the real title
+  const prevDocTitle = useRef(docTitle);
+  if (docTitle !== prevDocTitle.current) {
+    prevDocTitle.current = docTitle;
+    setLocalTitle(docTitle ?? '');
+  }
 
   const handleSignOut = async () => {
     setMenuOpen(false);
@@ -58,34 +72,49 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
         </span>
       </Link>
 
-      {/* Document title (only on editor) */}
+      {/* Editable Document title (only on editor) */}
       {docTitle !== undefined && (
         <>
           <span style={{ color: 'var(--border)', fontSize: 20 }}>/</span>
           <input
-            defaultValue={docTitle}
+            ref={titleRef}
+            value={localTitle}
+            onChange={e => setLocalTitle(e.target.value)}
+            onBlur={() => {
+              const trimmed = localTitle.trim() || 'Untitled spreadsheet';
+              setLocalTitle(trimmed);
+              onTitleChange?.(trimmed);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') titleRef.current?.blur();
+              if (e.key === 'Escape') {
+                setLocalTitle(docTitle);
+                titleRef.current?.blur();
+              }
+            }}
             placeholder="Untitled spreadsheet"
             style={{
               border: 'none', outline: 'none',
               fontSize: 14, fontWeight: 500,
               color: 'var(--text-primary)',
               background: 'transparent',
-              maxWidth: 260,
+              maxWidth: 280,
               padding: '4px 6px',
               borderRadius: 4,
               transition: 'background 0.15s',
             }}
             onFocus={e => (e.target.style.background = 'var(--surface-hover)')}
-            onBlur={e => (e.target.style.background = 'transparent')}
+            onBlurCapture={e => (e.target.style.background = 'transparent')}
+            suppressHydrationWarning
           />
         </>
       )}
 
       <div style={{ flex: 1 }} />
 
-      {/* Right side actions */}
+      {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Share button (only on editor) */}
+        {/* Share (editor only) */}
         {docTitle !== undefined && (
           <button
             style={{
@@ -107,10 +136,10 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
           </button>
         )}
 
-        {/* User avatar dropdown */}
+        {/* User dropdown */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() => setMenuOpen(o => !o)}
             style={{
               width: 34, height: 34,
               borderRadius: '50%',
@@ -118,8 +147,7 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
               border: '2px solid var(--border)',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff',
-              fontSize: 13, fontWeight: 700,
+              color: '#fff', fontSize: 13, fontWeight: 700,
               transition: 'transform 0.15s',
             }}
             onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
@@ -130,23 +158,19 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
           </button>
 
           {menuOpen && (
-            <div
-              style={{
-                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md)',
-                boxShadow: 'var(--shadow-md)',
-                minWidth: 200, padding: 8,
-                animation: 'fadeIn 0.12s ease-out',
-                zIndex: 200,
-              }}
-              // Close on outside click
-              onBlur={() => setMenuOpen(false)}
-            >
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-md)',
+              minWidth: 200, padding: 8,
+              animation: 'fadeIn 0.12s ease-out',
+              zIndex: 200,
+            }}>
               {/* User info */}
               <div style={{ padding: '8px 10px 12px', borderBottom: '1px solid var(--border-light)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%',
                     background: avatar.color, color: '#fff',
@@ -162,7 +186,6 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
                 </div>
               </div>
 
-              {/* Sign in with Google (if not signed in properly) */}
               {(!user || user.isGuest) && (
                 <button
                   onClick={async () => { setMenuOpen(false); await signInWithGoogle(); }}
@@ -171,8 +194,7 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
                     padding: '8px 10px', background: 'none', border: 'none',
                     borderRadius: 'var(--radius-sm)', fontSize: 13,
                     color: 'var(--primary)', cursor: 'pointer',
-                    marginTop: 4, transition: 'background 0.1s',
-                    fontFamily: 'inherit',
+                    marginTop: 4, transition: 'background 0.1s', fontFamily: 'inherit',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--primary-light)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'none')}
@@ -187,7 +209,6 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
                 </button>
               )}
 
-              {/* Sign out */}
               {user && (
                 <button
                   onClick={handleSignOut}
@@ -196,8 +217,7 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
                     padding: '8px 10px', background: 'none', border: 'none',
                     borderRadius: 'var(--radius-sm)', fontSize: 13,
                     color: 'var(--danger)', cursor: 'pointer',
-                    marginTop: 4, transition: 'background 0.1s',
-                    fontFamily: 'inherit',
+                    marginTop: 4, transition: 'background 0.1s', fontFamily: 'inherit',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#fff3f3')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'none')}
