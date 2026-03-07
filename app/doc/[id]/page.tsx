@@ -7,10 +7,11 @@ import Grid, { type GridData, type CellFormat } from '../../components/Grid';
 import PresenceBar, { type Collaborator } from '../../components/PresenceBar';
 import SaveIndicator, { type SaveState } from '../../components/SaveIndicator';
 import NameModal from '../../components/NameModal';
+import { useAuth } from '@/lib/auth-context';
 
 // ── Mock collaborator data ────────────────────────────────
 const MOCK_COLLABORATORS: Collaborator[] = [
-  { id: 'user-2', name: 'Alex', color: '#1a73e8', initial: 'A', cell: 'C4' },
+  { id: 'user-2', name: 'Alex',  color: '#1a73e8', initial: 'A', cell: 'C4' },
   { id: 'user-3', name: 'Maria', color: '#059669', initial: 'M', cell: 'F7' },
 ];
 
@@ -23,19 +24,26 @@ interface Sheet { id: string; name: string; }
 
 // ── Editor ────────────────────────────────────────────────
 export default function EditorPage({ params }: { params: { id: string } }) {
-  const [gridData, setGridData]       = useState<GridData>(new Map());
+  const { user, continueAsGuest } = useAuth();
+
+  // Guest-name override (only used when not already authenticated)
+  const [guestUser, setGuestUser] = useState<{ name: string; color: string; initial: string } | null>(null);
+  const showNameModal = !user && !guestUser;
+
+  const activeUser = user
+    ? { name: user.name, color: user.color, initial: user.initial }
+    : guestUser;
+
+  const [gridData, setGridData]         = useState<GridData>(new Map());
   const [selectedCell, setSelectedCell] = useState<string>('A1');
   const [formulaValue, setFormulaValue] = useState('');
-  const [saveState, setSaveState]     = useState<SaveState>('saved');
-  const [showNameModal, setShowNameModal] = useState(true);
-  const [user, setUser]               = useState<{ name: string; color: string; initial: string } | null>(null);
-  const [sheets, setSheets]           = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
-  const [activeSheet, setActiveSheet] = useState('sheet-1');
-  const [colWidths, setColWidths]     = useState<Map<number, number>>(new Map());
+  const [saveState, setSaveState]       = useState<SaveState>('saved');
+  const [sheets, setSheets]             = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
+  const [activeSheet, setActiveSheet]   = useState('sheet-1');
+  const [colWidths, setColWidths]       = useState<Map<number, number>>(new Map());
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Handle cell changes with debounced "save"
   const handleCellChange = useCallback((cellId: string, raw: string, computed: string) => {
     setGridData(prev => {
       const next = new Map(prev);
@@ -52,7 +60,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     saveTimer.current = setTimeout(() => setSaveState('saved'), 1200);
   }, []);
 
-  // Format operations
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
     setGridData(prev => {
       const next = new Map(prev);
@@ -69,12 +76,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }, [gridData]);
 
   const handleFormulaConfirm = useCallback(() => {
-    // Trigger cell update via formula bar
     const raw = formulaValue;
-    const computed = raw.startsWith('=')
-      ? raw  // will be fully evaluated by Grid on next render
-      : raw;
-    handleCellChange(selectedCell, raw, computed);
+    handleCellChange(selectedCell, raw, raw.startsWith('=') ? raw : raw);
   }, [formulaValue, selectedCell, handleCellChange]);
 
   const addSheet = () => {
@@ -89,21 +92,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }, []);
 
   const handleExport = () => {
-    // Build CSV
     let csv = '';
     for (let r = 0; r < 100; r++) {
       const row: string[] = [];
       for (let c = 0; c < 26; c++) {
-        const id = `${String.fromCharCode(65 + c)}${r + 1}`;
+        const id   = `${String.fromCharCode(65 + c)}${r + 1}`;
         const cell = gridData.get(id);
-        const v = cell?.computed ?? '';
+        const v    = cell?.computed ?? '';
         row.push(v.includes(',') ? `"${v}"` : v);
       }
       if (row.some(v => v !== '')) csv += row.join(',') + '\n';
     }
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = `spreadsheet_${params.id}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
@@ -111,18 +113,18 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const existingCell = gridData.get(selectedCell);
 
   const allCollaborators: Collaborator[] = [
-    ...(user ? [{ id: 'me', name: `${user.name} (you)`, color: user.color, initial: user.initial }] : []),
+    ...(activeUser ? [{ id: 'me', name: `${activeUser.name} (you)`, color: activeUser.color, initial: activeUser.initial }] : []),
     ...MOCK_COLLABORATORS,
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Name modal */}
+      {/* Name modal — only shown when there's no authenticated user and no guest name yet */}
       {showNameModal && (
         <NameModal
           onConfirm={(name, color) => {
-            setUser({ name, color, initial: name[0].toUpperCase() });
-            setShowNameModal(false);
+            setGuestUser({ name, color, initial: name[0].toUpperCase() });
+            continueAsGuest(name);
           }}
         />
       )}
@@ -139,7 +141,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         padding: '0 12px', gap: 8,
         flexShrink: 0,
       }}>
-        {/* Menu items */}
         {['File', 'Edit', 'View', 'Insert', 'Format', 'Data', 'Tools', 'Extensions', 'Help'].map(item => (
           <button
             key={item}
@@ -158,24 +159,22 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Presence bar */}
         <PresenceBar collaborators={allCollaborators} />
 
         <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 6px' }} />
 
-        {/* Save indicator */}
         <SaveIndicator state={saveState} />
       </div>
 
       {/* Toolbar */}
       <Toolbar
-        onBold={() => applyFormat({ bold: !existingCell?.format?.bold })}
-        onItalic={() => applyFormat({ italic: !existingCell?.format?.italic })}
-        onColor={(c) => applyFormat({ textColor: c })}
-        onBgColor={(c) => applyFormat({ bgColor: c })}
-        onAlignLeft={() => applyFormat({ align: 'left' })}
+        onBold={()    => applyFormat({ bold:      !existingCell?.format?.bold })}
+        onItalic={()  => applyFormat({ italic:    !existingCell?.format?.italic })}
+        onColor={(c)  => applyFormat({ textColor: c })}
+        onBgColor={(c)=> applyFormat({ bgColor:   c })}
+        onAlignLeft={()   => applyFormat({ align: 'left' })}
         onAlignCenter={() => applyFormat({ align: 'center' })}
-        onAlignRight={() => applyFormat({ align: 'right' })}
+        onAlignRight={()  => applyFormat({ align: 'right' })}
         onExport={handleExport}
         isBold={existingCell?.format?.bold}
         isItalic={existingCell?.format?.italic}
@@ -206,10 +205,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         background: 'var(--surface)',
         borderTop: '1px solid var(--border)',
         display: 'flex', alignItems: 'stretch',
-        padding: '0 8px',
-        gap: 2,
-        flexShrink: 0,
-        overflowX: 'auto',
+        padding: '0 8px', gap: 2,
+        flexShrink: 0, overflowX: 'auto',
       }}>
         {sheets.map(sheet => (
           <button
@@ -222,29 +219,23 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               borderBottom: activeSheet === sheet.id ? '2px solid var(--primary)' : '2px solid transparent',
               fontSize: 13, fontWeight: activeSheet === sheet.id ? 600 : 400,
               color: activeSheet === sheet.id ? 'var(--primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              borderRadius: '4px 4px 0 0',
-              transition: 'all 0.1s',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
+              cursor: 'pointer', borderRadius: '4px 4px 0 0',
+              transition: 'all 0.1s', whiteSpace: 'nowrap', flexShrink: 0,
             }}
           >
             {sheet.name}
           </button>
         ))}
 
-        {/* Add sheet */}
         <button
           onClick={addSheet}
           title="Add sheet"
           style={{
             padding: '0 10px', background: 'none', border: 'none',
             color: 'var(--text-muted)', cursor: 'pointer',
-            borderRadius: '4px 4px 0 0',
-            fontSize: 18, lineHeight: 1,
+            borderRadius: '4px 4px 0 0', fontSize: 18, lineHeight: 1,
             transition: 'background 0.1s, color 0.1s',
-            display: 'flex', alignItems: 'center',
-            flexShrink: 0,
+            display: 'flex', alignItems: 'center', flexShrink: 0,
           }}
           onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
           onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; }}

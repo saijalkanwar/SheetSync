@@ -1,9 +1,26 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 
 export default function Navbar({ docTitle }: { docTitle?: string }) {
+  const { user, signInWithGoogle, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    setMenuOpen(false);
+    await signOut();
+    router.push('/login');
+  };
+
+  const avatar = {
+    initial: user?.initial ?? 'G',
+    color:   user?.color   ?? '#9aa0ab',
+    name:    user?.name    ?? 'Guest',
+    sub:     user?.isGuest ? 'Guest session' : (user ? 'Signed in' : 'Not signed in'),
+  };
 
   return (
     <header
@@ -49,10 +66,8 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
             defaultValue={docTitle}
             placeholder="Untitled spreadsheet"
             style={{
-              border: 'none',
-              outline: 'none',
-              fontSize: 14,
-              fontWeight: 500,
+              border: 'none', outline: 'none',
+              fontSize: 14, fontWeight: 500,
               color: 'var(--text-primary)',
               background: 'transparent',
               maxWidth: 260,
@@ -70,20 +85,16 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
 
       {/* Right side actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Share button */}
+        {/* Share button (only on editor) */}
         {docTitle !== undefined && (
           <button
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '7px 14px',
-              background: 'var(--primary)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 'var(--radius-full)',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background 0.15s, transform 0.1s',
+              background: 'var(--primary)', color: '#fff',
+              border: 'none', borderRadius: 'var(--radius-full)',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              transition: 'background 0.15s',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--primary-hover)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'var(--primary)')}
@@ -96,74 +107,107 @@ export default function Navbar({ docTitle }: { docTitle?: string }) {
           </button>
         )}
 
-        {/* User avatar */}
+        {/* User avatar dropdown */}
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             style={{
               width: 34, height: 34,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+              background: avatar.color,
               border: '2px solid var(--border)',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: '#fff',
-              fontSize: 13,
-              fontWeight: 700,
+              fontSize: 13, fontWeight: 700,
               transition: 'transform 0.15s',
             }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+            title={avatar.name}
           >
-            U
+            {avatar.initial}
           </button>
+
           {menuOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-md)',
-              minWidth: 180,
-              padding: '8px',
-              animation: 'fadeIn 0.12s ease-out',
-              zIndex: 200,
-            }}>
+            <div
+              style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-md)',
+                minWidth: 200, padding: 8,
+                animation: 'fadeIn 0.12s ease-out',
+                zIndex: 200,
+              }}
+              // Close on outside click
+              onBlur={() => setMenuOpen(false)}
+            >
+              {/* User info */}
               <div style={{ padding: '8px 10px 12px', borderBottom: '1px solid var(--border-light)' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Guest User</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Not signed in</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: avatar.color, color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {avatar.initial}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{avatar.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{avatar.sub}</div>
+                  </div>
+                </div>
               </div>
-              <button
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 10px', background: 'none', border: 'none',
-                  borderRadius: 'var(--radius-sm)', fontSize: 13,
-                  color: 'var(--text-primary)', cursor: 'pointer',
-                  marginTop: 4,
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M7 1a3 3 0 110 6 3 3 0 010-6zM1.5 13c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                </svg>
-                Set display name
-              </button>
-              <button
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 10px', background: 'none', border: 'none',
-                  borderRadius: 'var(--radius-sm)', fontSize: 13,
-                  color: 'var(--primary)', cursor: 'pointer',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--primary-light)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M5.5 2.5H2a1 1 0 00-1 1v8.5a1 1 0 001 1h9.5a1 1 0 001-1v-3.5M8.5 1.5l4 4M8.5 1.5H12m0 0v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Sign in with Google
-              </button>
+
+              {/* Sign in with Google (if not signed in properly) */}
+              {(!user || user.isGuest) && (
+                <button
+                  onClick={async () => { setMenuOpen(false); await signInWithGoogle(); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', background: 'none', border: 'none',
+                    borderRadius: 'var(--radius-sm)', fontSize: 13,
+                    color: 'var(--primary)', cursor: 'pointer',
+                    marginTop: 4, transition: 'background 0.1s',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--primary-light)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                  </svg>
+                  Sign in with Google
+                </button>
+              )}
+
+              {/* Sign out */}
+              {user && (
+                <button
+                  onClick={handleSignOut}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', background: 'none', border: 'none',
+                    borderRadius: 'var(--radius-sm)', fontSize: 13,
+                    color: 'var(--danger)', cursor: 'pointer',
+                    marginTop: 4, transition: 'background 0.1s',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#fff3f3')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M5.5 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3.5M9.5 10l3-3-3-3M12.5 7H5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Sign out
+                </button>
+              )}
             </div>
           )}
         </div>
