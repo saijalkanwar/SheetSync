@@ -7,11 +7,13 @@ import { useAuth } from '@/lib/auth-context';
 interface NavbarProps {
   docTitle?: string;
   onTitleChange?: (newTitle: string) => void;
+  onColorChange?: (color: string) => void;
 }
 
-export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
+export default function Navbar({ docTitle, onTitleChange, onColorChange }: NavbarProps) {
   const { user, signInWithGoogle, signOut } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen]     = useState(false);
+  const [customColor, setCustomColor] = useState<string | null>(null);
   const [localTitle, setLocalTitle] = useState(docTitle ?? '');
   const router = useRouter();
   const titleRef = useRef<HTMLInputElement>(null);
@@ -31,7 +33,7 @@ export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
 
   const avatar = {
     initial: user?.initial ?? 'G',
-    color:   user?.color   ?? '#9aa0ab',
+    color:   customColor ?? user?.color ?? '#9aa0ab',
     name:    user?.name    ?? 'Guest',
     sub:     user?.isGuest ? 'Guest session' : (user ? 'Signed in' : 'Not signed in'),
   };
@@ -114,28 +116,6 @@ export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* Share (editor only) */}
-        {docTitle !== undefined && (
-          <button
-            suppressHydrationWarning
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px',
-              background: 'var(--primary)', color: '#fff',
-              border: 'none', borderRadius: 'var(--radius-full)',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--primary-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--primary)')}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M11 5a2 2 0 100-4 2 2 0 000 4zM3 9a2 2 0 100-4 2 2 0 000 4zM11 13a2 2 0 100-4 2 2 0 000 4z" stroke="white" strokeWidth="1.4"/>
-              <path d="M4.9 8.2l4.2 2.1M9.1 3.7L4.9 5.8" stroke="white" strokeWidth="1.4" strokeLinecap="round"/>
-            </svg>
-            Share
-          </button>
-        )}
 
         {/* User dropdown */}
         <div style={{ position: 'relative' }}>
@@ -185,6 +165,33 @@ export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
                     <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{avatar.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{avatar.sub}</div>
                   </div>
+                </div>
+              </div>
+
+              {/* Colour picker */}
+              <div style={{ padding: '10px 10px 6px', borderBottom: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Your colour</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {['#7c3aed','#4f46e5','#0891b2','#059669','#d97706','#dc2626','#db2777','#0d9488','#1a73e8','#f59e0b','#10b981','#ef4444'].map(c => (
+                    <button
+                      key={c}
+                      suppressHydrationWarning
+                      onClick={() => {
+                        setCustomColor(c);
+                        onColorChange?.(c);
+                      }}
+                      title={c}
+                      style={{
+                        width: 20, height: 20, borderRadius: '50%', background: c,
+                        border: (customColor ?? user?.color) === c ? '3px solid var(--text-primary)' : '2px solid transparent',
+                        cursor: 'pointer', transition: 'transform 0.1s',
+                        outline: (customColor ?? user?.color) === c ? `2px solid ${c}` : 'none',
+                        outlineOffset: 1,
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.25)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+                    />
+                  ))}
                 </div>
               </div>
 

@@ -124,7 +124,8 @@ export function useSpreadsheet(docId: string, userId: string, userName: string) 
       // Optimistic local update
       setGridData(prev => {
         const next = new Map(prev);
-        if (!raw && !computed) {
+        const isEmpty = !raw && !computed && !format;
+        if (isEmpty) {
           next.delete(cellId);
         } else {
           next.set(cellId, { raw, computed, format });
@@ -143,7 +144,8 @@ export function useSpreadsheet(docId: string, userId: string, userName: string) 
       const timer = setTimeout(async () => {
         try {
           const cellRef = doc(db, 'documents', docId, 'cells', cellId);
-          if (!raw && !computed) {
+          const isEmpty = !raw && !computed && !format;
+          if (isEmpty) {
             await deleteDoc(cellRef);
           } else {
             await setDoc(cellRef, {

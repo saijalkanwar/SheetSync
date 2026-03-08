@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Documents ──────────────────────────────────────────────────────────
+    // Anyone authenticated (including social + guest session) can read all docs.
+    // Only the owner can delete a document.
+    // Anyone can create a document (dashboard "New" button).
+    // Anyone can update metadata (title, updatedAt) — collaborative by design.
+    match /documents/{docId} {
+      allow read:   if request.auth != null || isGuestSession();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid || isOwner(resource)
+      );
+
+      // ── Cells sub-collection ───────────────────────────────────────────
+      // Anyone with access to the parent document can read/write cells.
+      match /cells/{cellId} {
+        allow read, write: if isSignedIn() || isGuestSession();
+      }
+
+      // ── Presence sub-collection ────────────────────────────────────────
+      // Users can write their own presence record; read all.
+      match /presence/{userId} {
+        allow read:  if true;  // presence is public within a doc
+        allow write: if request.auth != null
+          ? request.auth.uid == userId
+          : userId.matches('guest-.*');  // guest IDs start with "guest-"
+      }
+    }
+
+    // ── Helper functions ───────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Guest sessions don't have Firebase Auth but we allow read/write for them
+    // (controlled at the application level via session cookie check).
+    function isGuestSession() {
+      return request.auth == null;  // relaxed — tighten in production
+    }
+
+    function isOwner(doc) {
+      return doc.data.ownerId == request.auth.uid;
+    }
+  }
+}

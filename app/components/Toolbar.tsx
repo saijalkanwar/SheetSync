@@ -296,20 +296,6 @@ export default function Toolbar({
         </svg>
       </ToolBtn>
 
-      <Divider />
-
-      {/* Number format */}
-      <ToolBtn title="Format as currency ($)">
-        <span style={{ fontSize: 12, fontWeight: 700 }}>$</span>
-      </ToolBtn>
-      <ToolBtn title="Format as percentage (%)">
-        <span style={{ fontSize: 12, fontWeight: 700 }}>%</span>
-      </ToolBtn>
-      <ToolBtn title="Increase decimal places">
-        <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
-          <path d="M1 9h12M4 6l3-5 3 5M7 1v8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </ToolBtn>
 
       <div style={{ flex: 1 }} />
 

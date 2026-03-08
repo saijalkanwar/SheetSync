@@ -40,23 +40,37 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   const [sheets, setSheets]               = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
   const [activeSheet, setActiveSheet]     = useState('sheet-1');
   const [colWidths, setColWidths]         = useState<Map<number, number>>(new Map());
+  const [userColor, setUserColor]         = useState<string | null>(null);
   const formulaEditing                    = useRef(false);
+  // Refs so toolbar callbacks always see the freshest values
+  const selectedCellRef = useRef(selectedCell);
+  selectedCellRef.current = selectedCell;
+  const gridDataRef = useRef(gridData);
+  gridDataRef.current = gridData;
+
+  // Override activeUser color when user picks a new one from navbar dropdown
+  const effectiveActiveUser = activeUser
+    ? { ...activeUser, color: userColor ?? activeUser.color }
+    : null;
 
   // ── Presence ───────────────────────────────────────
-  usePresence(docId, activeUser, selectedCell, setCollaborators);
+  usePresence(docId, effectiveActiveUser, selectedCell, setCollaborators);
 
   // ── Cell change ────────────────────────────────────
   const handleCellChange = useCallback((id: string, raw: string, computed: string) => {
-    const existingFormat = gridData.get(id)?.format;
+    const existingFormat = gridDataRef.current.get(id)?.format;
     updateCell(id, raw, computed, existingFormat);
-  }, [gridData, updateCell]);
+  }, [updateCell]);
 
   // ── Format ─────────────────────────────────────────
+  // Use refs so the callback always targets the correct cell regardless of stale closures
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
-    const existing = gridData.get(selectedCell) ?? { raw: '', computed: '' };
+    const cell = selectedCellRef.current;
+    const existing = gridDataRef.current.get(cell) ?? { raw: '', computed: '' };
     const newFormat: CellFormat = { ...existing.format, ...patch };
-    updateCell(selectedCell, existing.raw, existing.computed, newFormat);
-  }, [selectedCell, gridData, updateCell]);
+    updateCell(cell, existing.raw, existing.computed, newFormat);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateCell]);
 
   // ── Selection ──────────────────────────────────────
   const handleSelectionChange = useCallback((id: string) => {
@@ -118,7 +132,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   });
 
   const allCollaborators: Collaborator[] = [
-    ...(activeUser ? [{ id: 'me', name: `${activeUser.name} (you)`, color: activeUser.color, initial: activeUser.initial }] : []),
+    ...(effectiveActiveUser ? [{ id: 'me', name: `${effectiveActiveUser.name} (you)`, color: effectiveActiveUser.color, initial: effectiveActiveUser.initial }] : []),
     ...collaborators,
   ];
 
@@ -133,7 +147,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
         />
       )}
 
-      <Navbar docTitle={title} onTitleChange={renameDocument} />
+      <Navbar docTitle={title} onTitleChange={renameDocument} onColorChange={setUserColor} />
 
       {/* Menu bar */}
       <div style={{

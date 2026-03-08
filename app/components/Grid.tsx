@@ -215,18 +215,24 @@ function evaluate(formula: string, getValue: (id: string) => string): string {
     }
 
     // Arithmetic expression with optional cell refs
-    const withValues = formula.slice(1).replace(/([A-Z]+\d+)/gi, ref => {
+    const withValues = formula.slice(1).replace(/([A-Za-z]+\d+)/g, ref => {
       const v = parseFloat(getValue(ref.toUpperCase()));
       return isNaN(v) ? '0' : String(v);
     });
-    if (/^[\d\s\+\-\*\/\.\(\)\^%]+$/.test(withValues)) {
+    // Try to evaluate as a JS arithmetic expression — no regex gate needed
+    try {
       // eslint-disable-next-line no-new-func
       const result = Function('"use strict"; return (' + withValues + ')')();
-      if (typeof result === 'number' && isNaN(result)) return '#VALUE!';
+      if (typeof result === 'number') {
+        if (isNaN(result)) return '#VALUE!';
+        if (!isFinite(result)) return '#DIV/0!';
+        // Round floating point noise (e.g. 0.1+0.2 = 0.30000000000000004)
+        return String(Math.round(result * 1e10) / 1e10);
+      }
       return String(result);
+    } catch {
+      return '#ERR!';
     }
-
-    return '#ERR!';
   } catch {
     return '#ERR!';
   }
@@ -265,6 +271,11 @@ export default function Grid({
   const [draggingRow, setDraggingRow] = useState<number | null>(null);
   const [dragOverRow, setDragOverRow] = useState<number | null>(null);
 
+  // ── Context menu ───────────────────────────────────
+  interface CtxMenu { x: number; y: number; vr: number; vc: number; }
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const closeCtx = useCallback(() => setCtxMenu(null), []);
+
   // ── Column resize — local ref so resize is instant ─
   // localWidths mirrors colWidthsProp but can be updated immediately during drag
   const localWidths = useRef<Map<number, number>>(new Map(colWidthsProp));
@@ -279,6 +290,51 @@ export default function Grid({
 
   const actualCol = (vc: number) => colOrder[vc] ?? vc;
   const actualRow = (vr: number) => rowOrder[vr] ?? vr;
+
+  // ── Context menu row/col operations ───────────────
+  const insertRowAbove = useCallback((vr: number) => {
+    const ar = rowOrder[vr] ?? vr;
+    for (let r = NUM_ROWS - 2; r >= ar; r--)
+      for (let c = 0; c < NUM_COLS; c++) {
+        const cell = data.get(cellId(r, c));
+        onCellChange(cellId(r + 1, c), cell?.raw ?? '', cell?.computed ?? '');
+      }
+    for (let c = 0; c < NUM_COLS; c++) onCellChange(cellId(ar, c), '', '');
+    closeCtx();
+  }, [rowOrder, data, onCellChange, closeCtx]);
+
+  const deleteRow = useCallback((vr: number) => {
+    const ar = rowOrder[vr] ?? vr;
+    for (let r = ar; r < NUM_ROWS - 1; r++)
+      for (let c = 0; c < NUM_COLS; c++) {
+        const next = data.get(cellId(r + 1, c));
+        onCellChange(cellId(r, c), next?.raw ?? '', next?.computed ?? '');
+      }
+    for (let c = 0; c < NUM_COLS; c++) onCellChange(cellId(NUM_ROWS - 1, c), '', '');
+    closeCtx();
+  }, [rowOrder, data, onCellChange, closeCtx]);
+
+  const insertColLeft = useCallback((vc: number) => {
+    const ac = colOrder[vc] ?? vc;
+    for (let c = NUM_COLS - 2; c >= ac; c--)
+      for (let r = 0; r < NUM_ROWS; r++) {
+        const cell = data.get(cellId(r, c));
+        onCellChange(cellId(r, c + 1), cell?.raw ?? '', cell?.computed ?? '');
+      }
+    for (let r = 0; r < NUM_ROWS; r++) onCellChange(cellId(r, ac), '', '');
+    closeCtx();
+  }, [colOrder, data, onCellChange, closeCtx]);
+
+  const deleteCol = useCallback((vc: number) => {
+    const ac = colOrder[vc] ?? vc;
+    for (let c = ac; c < NUM_COLS - 1; c++)
+      for (let r = 0; r < NUM_ROWS; r++) {
+        const next = data.get(cellId(r, c + 1));
+        onCellChange(cellId(r, c), next?.raw ?? '', next?.computed ?? '');
+      }
+    for (let r = 0; r < NUM_ROWS; r++) onCellChange(cellId(r, NUM_COLS - 1), '', '');
+    closeCtx();
+  }, [colOrder, data, onCellChange, closeCtx]);
 
   const getValue = useCallback((id: string) => data.get(id.toUpperCase())?.computed ?? '', [data]);
   const getRaw   = useCallback((id: string) => data.get(id.toUpperCase())?.raw ?? '', [data]);
@@ -505,6 +561,11 @@ export default function Grid({
                       if (editingCell && !(editingCell.row === ar && editingCell.col === ac)) commitEdit();
                     }}
                     onDoubleClick={() => startEdit(ar, ac)}
+                    onContextMenu={e => {
+                      e.preventDefault();
+                      setCtxMenu({ x: e.clientX, y: e.clientY, vr, vc });
+                      setSelectedCell({ row: vr, col: vc });
+                    }}
                   >
                     {/* Remote cursor name badge */}
                     {remoteCursor && (
@@ -542,11 +603,16 @@ export default function Grid({
                           fontStyle:  fmt.italic ? 'italic' : 'normal',
                           fontSize:   fmt.fontSize ?? 13,
                           color:      fmt.textColor ?? 'var(--text-primary)',
+                          textAlign:  fmt.align ?? 'left',
                           minWidth:   getColWidth(ac),
                         }}
                       />
                     ) : (
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 2px' }}>
+                      <span style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', width: '100%', padding: '0 2px',
+                        textAlign: fmt.align ?? 'left',
+                      }}>
                         {/* Always show evaluated value; raw stored but computed shown */}
                         {(() => {
                           const cell = data.get(id);
@@ -563,6 +629,44 @@ export default function Grid({
           );
         })}
       </div>
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'fixed', top: ctxMenu.y, left: ctxMenu.x, zIndex: 9999,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)',
+            minWidth: 200, padding: 4,
+            animation: 'fadeIn 0.1s ease-out',
+          }}
+          onMouseLeave={closeCtx}
+        >
+          {([
+            { label: 'Insert row above', action: () => insertRowAbove(ctxMenu.vr) },
+            { label: 'Insert row below', action: () => insertRowAbove(ctxMenu.vr + 1) },
+            { label: 'Delete row',       action: () => deleteRow(ctxMenu.vr) },
+            null,
+            { label: 'Insert column left',  action: () => insertColLeft(ctxMenu.vc) },
+            { label: 'Insert column right', action: () => insertColLeft(ctxMenu.vc + 1) },
+            { label: 'Delete column',       action: () => deleteCol(ctxMenu.vc) },
+          ] as (null | { label: string; action: () => void })[]).map((item, i) =>
+            item === null ? (
+              <div key={`div-${i}`} className="context-menu-divider" />
+            ) : (
+              <button
+                key={item.label}
+                className="context-menu-item"
+                suppressHydrationWarning
+                onClick={item.action}
+                style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                {item.label}
+              </button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }

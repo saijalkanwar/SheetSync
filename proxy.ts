@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = ['/login', '/_next', '/favicon.ico'];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths and static assets
@@ -13,7 +13,6 @@ export function middleware(req: NextRequest) {
   const session = req.cookies.get('__ss_session')?.value;
 
   if (!session) {
-    // Redirect to login, preserving the original destination
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('redirect', pathname);
