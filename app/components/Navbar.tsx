@@ -117,6 +117,7 @@ export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
         {/* Share (editor only) */}
         {docTitle !== undefined && (
           <button
+            suppressHydrationWarning
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '7px 14px',
@@ -153,6 +154,7 @@ export default function Navbar({ docTitle, onTitleChange }: NavbarProps) {
             onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.05)')}
             onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
             title={avatar.name}
+            suppressHydrationWarning
           >
             {avatar.initial}
           </button>

@@ -109,14 +109,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alert('Firebase is not configured. Please add your NEXT_PUBLIC_FIREBASE_* env vars to .env.local');
       return;
     }
-    const provider = new GoogleAuthProvider();
-    const result   = await signInWithPopup(auth, provider);
-    const u        = toAuthUser(result.user);
-    setUser(u);
-    setCookie(result.user.uid);
-    // Persist display name if not set
-    if (!result.user.displayName) {
-      await updateProfile(result.user, { displayName: 'User' });
+    try {
+      const provider = new GoogleAuthProvider();
+      const result   = await signInWithPopup(auth, provider);
+      const u        = toAuthUser(result.user);
+      setUser(u);
+      setCookie(result.user.uid);
+      if (!result.user.displayName) {
+        await updateProfile(result.user, { displayName: 'User' });
+      }
+    } catch (err: unknown) {
+      // User closed the popup or a second popup was opened — not an error
+      const code = (err as { code?: string })?.code ?? '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+      throw err; // re-throw anything unexpected
     }
   };
 

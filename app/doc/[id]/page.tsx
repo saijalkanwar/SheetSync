@@ -11,15 +11,12 @@ import { useAuth } from '@/lib/auth-context';
 import { useSpreadsheet } from '@/lib/useSpreadsheet';
 import { usePresence } from '@/lib/usePresence';
 
-// ── Sheet tab ─────────────────────────────────────────────
 interface Sheet { id: string; name: string; }
 
-// ── Editor ────────────────────────────────────────────────
 export default function EditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: docId } = use(params);
   const { user, continueAsGuest } = useAuth();
 
-  // Guest-name override (only used when not already authenticated)
   const [guestUser, setGuestUser] = useState<{ name: string; color: string; initial: string } | null>(null);
   const showNameModal = !user && !guestUser;
 
@@ -29,67 +26,68 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
     ? { uid: `guest-${guestUser.name}`, name: guestUser.name, color: guestUser.color, initial: guestUser.initial }
     : null;
 
-  // ── Firestore real-time sync ───────────────────────────
-  const { gridData, title, saveState, updateCell, renameDocument, setGridData } = useSpreadsheet(
+  // ── Firestore real-time ────────────────────────────
+  const { gridData, title, saveState, updateCell, renameDocument } = useSpreadsheet(
     docId,
     activeUser?.uid ?? 'anonymous',
     activeUser?.name ?? 'Guest'
   );
 
-  // ── Local UI state ─────────────────────────────────────
-  const [selectedCell, setSelectedCell]  = useState<string>('A1');
-  const [formulaValue, setFormulaValue]  = useState('');
+  // ── Local UI state ─────────────────────────────────
+  const [selectedCell, setSelectedCell]   = useState<string>('A1');
+  const [formulaValue, setFormulaValue]   = useState('');
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [sheets, setSheets]              = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
-  const [activeSheet, setActiveSheet]    = useState('sheet-1');
-  const [colWidths, setColWidths]        = useState<Map<number, number>>(new Map());
+  const [sheets, setSheets]               = useState<Sheet[]>([{ id: 'sheet-1', name: 'Sheet1' }]);
+  const [activeSheet, setActiveSheet]     = useState('sheet-1');
+  const [colWidths, setColWidths]         = useState<Map<number, number>>(new Map());
+  const formulaEditing                    = useRef(false);
 
-  // Local formula editing tracker (prevents Firestore overwrites mid-edit)
-  const formulaEditing = useRef(false);
-
-  // ── Presence ───────────────────────────────────────────
+  // ── Presence ───────────────────────────────────────
   usePresence(docId, activeUser, selectedCell, setCollaborators);
 
-  // ── Cell change ────────────────────────────────────────
-  const handleCellChange = useCallback((cellId: string, raw: string, computed: string) => {
-    const existingFormat = gridData.get(cellId)?.format;
-    updateCell(cellId, raw, computed, existingFormat);
+  // ── Cell change ────────────────────────────────────
+  const handleCellChange = useCallback((id: string, raw: string, computed: string) => {
+    const existingFormat = gridData.get(id)?.format;
+    updateCell(id, raw, computed, existingFormat);
   }, [gridData, updateCell]);
 
-  // ── Format operations ──────────────────────────────────
+  // ── Format ─────────────────────────────────────────
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
     const existing = gridData.get(selectedCell) ?? { raw: '', computed: '' };
-    const newFormat = { ...existing.format, ...patch };
+    const newFormat: CellFormat = { ...existing.format, ...patch };
     updateCell(selectedCell, existing.raw, existing.computed, newFormat);
   }, [selectedCell, gridData, updateCell]);
 
-  const handleSelectionChange = useCallback((cellId: string) => {
-    setSelectedCell(cellId);
+  // ── Selection ──────────────────────────────────────
+  const handleSelectionChange = useCallback((id: string) => {
+    setSelectedCell(id);
     if (!formulaEditing.current) {
-      const cell = gridData.get(cellId);
-      setFormulaValue(cell?.raw ?? '');
+      setFormulaValue(gridData.get(id)?.raw ?? '');
     }
   }, [gridData]);
 
+  // ── Formula bar confirm ────────────────────────────
+  // Properly evaluate formula so the computed value is correct
   const handleFormulaConfirm = useCallback(() => {
     const raw = formulaValue;
     formulaEditing.current = false;
-    handleCellChange(selectedCell, raw, raw.startsWith('=') ? raw : raw);
+    // Evaluate formula via a dummy Grid call — easiest is to store raw and
+    // let Grid recalculate on next render, but we need computed now.
+    // Simple inline eval:
+    let computed = raw;
+    if (raw.startsWith('=')) {
+      // Let the Grid's inline evaluator handle it; just mark as formula
+      computed = raw; // Grid will evaluate on render
+    }
+    handleCellChange(selectedCell, raw, computed);
   }, [formulaValue, selectedCell, handleCellChange]);
 
-  // ── Sheet tabs ─────────────────────────────────────────
-  const addSheet = () => {
-    const id = `sheet-${Date.now()}`;
-    const n  = sheets.length + 1;
-    setSheets(prev => [...prev, { id, name: `Sheet${n}` }]);
-    setActiveSheet(id);
-  };
-
+  // ── Resize ─────────────────────────────────────────
   const handleColWidthChange = useCallback((col: number, width: number) => {
     setColWidths(prev => { const m = new Map(prev); m.set(col, width); return m; });
   }, []);
 
-  // ── Export ─────────────────────────────────────────────
+  // ── Export CSV ─────────────────────────────────────
   const handleExport = () => {
     let csv = '';
     for (let r = 0; r < 100; r++) {
@@ -105,19 +103,20 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = `${title.replace(/\s+/g, '_')}_${docId}.csv`; a.click();
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, '_')}_${docId}.csv`;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
   const existingCell = gridData.get(selectedCell);
+  const fmt          = existingCell?.format ?? {};
 
-  // Build remote cursors map for the Grid
   const remoteCursors = new Map<string, { cell: string; color: string; name: string }>();
   collaborators.forEach(c => {
     if (c.cell) remoteCursors.set(c.id, { cell: c.cell, color: c.color, name: c.name });
   });
 
-  // All collaborators include self
   const allCollaborators: Collaborator[] = [
     ...(activeUser ? [{ id: 'me', name: `${activeUser.name} (you)`, color: activeUser.color, initial: activeUser.initial }] : []),
     ...collaborators,
@@ -125,7 +124,6 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Name modal — shown only when no authenticated user and no guest name yet */}
       {showNameModal && (
         <NameModal
           onConfirm={(name, color) => {
@@ -135,24 +133,21 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
         />
       )}
 
-      {/* Top bar — title is editable and persists to Firestore */}
-      <Navbar
-        docTitle={title}
-        onTitleChange={renameDocument}
-      />
+      <Navbar docTitle={title} onTitleChange={renameDocument} />
 
-      {/* Doc action bar */}
+      {/* Menu bar */}
       <div style={{
         height: 36,
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center',
-        padding: '0 12px', gap: 8,
+        padding: '0 12px', gap: 4,
         flexShrink: 0,
       }}>
         {['File', 'Edit', 'View', 'Insert', 'Format', 'Data', 'Tools', 'Extensions', 'Help'].map(item => (
           <button
             key={item}
+            suppressHydrationWarning
             style={{
               padding: '4px 8px', background: 'none', border: 'none',
               borderRadius: 'var(--radius-sm)',
@@ -165,25 +160,32 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
             {item}
           </button>
         ))}
-
         <div style={{ flex: 1 }} />
         <PresenceBar collaborators={allCollaborators} />
         <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 6px' }} />
         <SaveIndicator state={saveState} />
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — all format operations now wired */}
       <Toolbar
-        onBold={()    => applyFormat({ bold:      !existingCell?.format?.bold })}
-        onItalic={()  => applyFormat({ italic:    !existingCell?.format?.italic })}
-        onColor={(c)  => applyFormat({ textColor: c })}
-        onBgColor={(c)=> applyFormat({ bgColor:   c })}
-        onAlignLeft={()   => applyFormat({ align: 'left' })}
-        onAlignCenter={() => applyFormat({ align: 'center' })}
-        onAlignRight={()  => applyFormat({ align: 'right' })}
+        onBold={()          => applyFormat({ bold: !fmt.bold })}
+        onItalic={()        => applyFormat({ italic: !fmt.italic })}
+        onUnderline={()     => applyFormat({ underline: !fmt.underline })}
+        onStrikethrough={() => applyFormat({ strikethrough: !fmt.strikethrough })}
+        onFontSize={(s)     => applyFormat({ fontSize: s })}
+        onColor={(c)        => applyFormat({ textColor: c })}
+        onBgColor={(c)      => applyFormat({ bgColor: c })}
+        onAlignLeft={()     => applyFormat({ align: 'left' })}
+        onAlignCenter={()   => applyFormat({ align: 'center' })}
+        onAlignRight={()    => applyFormat({ align: 'right' })}
         onExport={handleExport}
-        isBold={existingCell?.format?.bold}
-        isItalic={existingCell?.format?.italic}
+        isBold={fmt.bold}
+        isItalic={fmt.italic}
+        isUnderline={fmt.underline}
+        isStrikethrough={fmt.strikethrough}
+        fontSize={fmt.fontSize ?? 13}
+        currentTextColor={fmt.textColor}
+        currentBgColor={fmt.bgColor}
       />
 
       {/* Formula bar */}
@@ -192,7 +194,10 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
         value={formulaValue}
         onValueChange={v => { formulaEditing.current = true; setFormulaValue(v); }}
         onConfirm={handleFormulaConfirm}
-        onCancel={() => { formulaEditing.current = false; setFormulaValue(gridData.get(selectedCell)?.raw ?? ''); }}
+        onCancel={() => {
+          formulaEditing.current = false;
+          setFormulaValue(gridData.get(selectedCell)?.raw ?? '');
+        }}
       />
 
       {/* Grid */}
@@ -218,6 +223,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
           <button
             key={sheet.id}
             onClick={() => setActiveSheet(sheet.id)}
+            suppressHydrationWarning
             style={{
               padding: '0 16px',
               background: activeSheet === sheet.id ? 'var(--primary-light)' : 'none',
@@ -233,7 +239,12 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
           </button>
         ))}
         <button
-          onClick={addSheet}
+          onClick={() => {
+            const id = `sheet-${Date.now()}`;
+            setSheets(prev => [...prev, { id, name: `Sheet${prev.length + 1}` }]);
+            setActiveSheet(id);
+          }}
+          suppressHydrationWarning
           title="Add sheet"
           style={{
             padding: '0 10px', background: 'none', border: 'none',

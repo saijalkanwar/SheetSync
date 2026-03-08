@@ -95,6 +95,7 @@ export default function NameModal({ onConfirm }: NameModalProps) {
               <button
                 key={c}
                 onClick={() => setColor(c)}
+                suppressHydrationWarning
                 style={{
                   width: 28, height: 28,
                   borderRadius: '50%',
@@ -143,6 +144,7 @@ export default function NameModal({ onConfirm }: NameModalProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             onClick={handleSubmit}
+            suppressHydrationWarning
             style={{
               width: '100%', padding: '11px',
               background: name.trim() ? 'var(--primary)' : '#c5d5f5',
@@ -158,6 +160,7 @@ export default function NameModal({ onConfirm }: NameModalProps) {
           </button>
           <button
             onClick={() => onConfirm('Guest', PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)])}
+            suppressHydrationWarning
             style={{
               width: '100%', padding: '11px',
               background: 'none', color: 'var(--text-secondary)',
@@ -172,6 +175,7 @@ export default function NameModal({ onConfirm }: NameModalProps) {
             Continue as Guest
           </button>
           <button
+            suppressHydrationWarning
             style={{
               width: '100%', padding: '11px',
               background: '#fff3f3', color: 'var(--danger)',

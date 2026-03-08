@@ -50,6 +50,7 @@ export default function FormulaBar({ cellAddress, value, onValueChange, onConfir
         <button
           onClick={onCancel}
           title="Cancel (Esc)"
+          suppressHydrationWarning
           style={{
             width: 22, height: 22, border: 'none', background: 'none',
             borderRadius: 3, cursor: 'pointer', color: 'var(--danger)',
@@ -66,6 +67,7 @@ export default function FormulaBar({ cellAddress, value, onValueChange, onConfir
         <button
           onClick={onConfirm}
           title="Confirm (Enter)"
+          suppressHydrationWarning
           style={{
             width: 22, height: 22, border: 'none', background: 'none',
             borderRadius: 3, cursor: 'pointer', color: 'var(--success)',
