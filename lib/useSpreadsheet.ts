@@ -90,27 +90,39 @@ export function useSpreadsheet(docId: string, userId: string, userName: string) 
     });
 
     // Listen to document meta (title)
-    const unsubDoc = onSnapshot(docRef, snap => {
-      if (snap.exists()) setTitle(snap.data().title ?? 'Untitled spreadsheet');
-    });
+    const unsubDoc = onSnapshot(
+      docRef,
+      snap => { if (snap.exists()) setTitle(snap.data().title ?? 'Untitled spreadsheet'); },
+      () => { /* ignore permission/quota errors on meta */ }
+    );
 
     // Listen to all cells
     const cellsRef = collection(db, 'documents', docId, 'cells');
-    const unsubCells = onSnapshot(cellsRef, snapshot => {
-      setGridData(prev => {
-        const next = new Map(prev);
-        snapshot.docChanges().forEach(change => {
-          const id = change.doc.id;
-          if (change.type === 'removed') {
-            next.delete(id);
-          } else {
-            const d = change.doc.data() as PlainCell;
-            next.set(id, { raw: d.raw, computed: d.computed, format: d.format });
-          }
+    const unsubCells = onSnapshot(
+      cellsRef,
+      snapshot => {
+        setGridData(prev => {
+          const next = new Map(prev);
+          snapshot.docChanges().forEach(change => {
+            const id = change.doc.id;
+            if (change.type === 'removed') {
+              next.delete(id);
+            } else {
+              const d = change.doc.data() as PlainCell;
+              next.set(id, { raw: d.raw, computed: d.computed, format: d.format });
+            }
+          });
+          return next;
         });
-        return next;
-      });
-    });
+      },
+      err => {
+        // resource-exhausted = quota exceeded on Spark plan
+        // Operate gracefully in offline mode; cell content already in local state
+        if (err.code !== 'resource-exhausted') {
+          setSaveState('error');
+        }
+      }
+    );
 
     return () => {
       unsubDoc();

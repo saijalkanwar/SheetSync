@@ -545,8 +545,8 @@ export default function Grid({
                       fontStyle:       fmt.italic ? 'italic' : 'normal',
                       fontSize:        fmt.fontSize ?? 13,
                       textDecoration:  [fmt.underline ? 'underline' : '', fmt.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
-                      color:           fmt.textColor ?? 'var(--text-primary)',
-                      background:      fmt.bgColor   ?? '#fff',
+                      color:           fmt.textColor ?? 'var(--cell-color)',
+                      background:      fmt.bgColor   ?? 'var(--cell-bg)',
                       justifyContent:  alignStyle,
                       outline: remoteCursor
                         ? `2px solid ${remoteCursor.color}`
@@ -602,7 +602,8 @@ export default function Grid({
                           fontWeight: fmt.bold   ? 700 : 400,
                           fontStyle:  fmt.italic ? 'italic' : 'normal',
                           fontSize:   fmt.fontSize ?? 13,
-                          color:      fmt.textColor ?? 'var(--text-primary)',
+                          color:      fmt.textColor ?? 'var(--cell-color)',
+                          background: fmt.bgColor   ?? 'var(--cell-bg)',
                           textAlign:  fmt.align ?? 'left',
                           minWidth:   getColWidth(ac),
                         }}

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
@@ -29,6 +29,21 @@ export default function Navbar({ docTitle, onTitleChange, onColorChange }: Navba
     setMenuOpen(false);
     await signOut();
     router.push('/login');
+  };
+
+  // ── Theme ──────────────────────────────────────────
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    const dark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setIsDark(dark);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }, []);
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+    localStorage.setItem('theme', next ? 'dark' : 'light');
   };
 
   const avatar = {
@@ -116,6 +131,36 @@ export default function Navbar({ docTitle, onTitleChange, onColorChange }: Navba
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+        {/* Dark / Light toggle */}
+        <button
+          onClick={toggleTheme}
+          suppressHydrationWarning
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'var(--surface-hover)',
+            border: '1.5px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', transition: 'background 0.15s, transform 0.15s',
+            color: 'var(--text-secondary)',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.08)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+        >
+          {isDark ? (
+            /* Sun icon */
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2"/>
+              <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          ) : (
+            /* Moon icon */
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
 
         {/* User dropdown */}
         <div style={{ position: 'relative' }}>

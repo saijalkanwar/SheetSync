@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef, use } from 'react';
+import { useState, useCallback, useRef, useMemo, use } from 'react';
 import Navbar from '../../components/Navbar';
 import Toolbar from '../../components/Toolbar';
 import FormulaBar from '../../components/FormulaBar';
@@ -41,12 +41,33 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   const [activeSheet, setActiveSheet]     = useState('sheet-1');
   const [colWidths, setColWidths]         = useState<Map<number, number>>(new Map());
   const [userColor, setUserColor]         = useState<string | null>(null);
+  // ── Cell formats: kept 100% local, never overwritten by Firestore ──
+  // This is the KEY fix: Firestore reconnects/quota errors cannot revert colors
+  const [cellFormats, setCellFormats]     = useState<Map<string, CellFormat>>(new Map());
   const formulaEditing                    = useRef(false);
   // Refs so toolbar callbacks always see the freshest values
   const selectedCellRef = useRef(selectedCell);
   selectedCellRef.current = selectedCell;
   const gridDataRef = useRef(gridData);
   gridDataRef.current = gridData;
+  const cellFormatsRef = useRef(cellFormats);
+  cellFormatsRef.current = cellFormats;
+
+  // ── Merged data: Firestore cell content + local formats ───────────────
+  const mergedData: GridData = useMemo(() => {
+    if (cellFormats.size === 0) return gridData;
+    const m = new Map(gridData);
+    cellFormats.forEach((fmt, id) => {
+      const existing = m.get(id);
+      if (existing) {
+        m.set(id, { ...existing, format: { ...existing.format, ...fmt } });
+      } else {
+        // Empty cell with only formatting applied
+        m.set(id, { raw: '', computed: '', format: fmt });
+      }
+    });
+    return m;
+  }, [gridData, cellFormats]);
 
   // Override activeUser color when user picks a new one from navbar dropdown
   const effectiveActiveUser = activeUser
@@ -58,19 +79,22 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
   // ── Cell change ────────────────────────────────────
   const handleCellChange = useCallback((id: string, raw: string, computed: string) => {
-    const existingFormat = gridDataRef.current.get(id)?.format;
-    updateCell(id, raw, computed, existingFormat);
+    // Format is kept in cellFormats, NOT passed to Firestore via updateCell
+    updateCell(id, raw, computed, undefined);
   }, [updateCell]);
 
   // ── Format ─────────────────────────────────────────
-  // Use refs so the callback always targets the correct cell regardless of stale closures
+  // ONLY updates cellFormats local state. Never touches Firestore.
+  // This guarantees colors survive any Firestore disconnect/reconnect.
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
     const cell = selectedCellRef.current;
-    const existing = gridDataRef.current.get(cell) ?? { raw: '', computed: '' };
-    const newFormat: CellFormat = { ...existing.format, ...patch };
-    updateCell(cell, existing.raw, existing.computed, newFormat);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateCell]);
+    setCellFormats(prev => {
+      const next = new Map(prev);
+      const curr = next.get(cell) ?? {};
+      next.set(cell, { ...curr, ...patch });
+      return next;
+    });
+  }, []);
 
   // ── Selection ──────────────────────────────────────
   const handleSelectionChange = useCallback((id: string) => {
@@ -123,7 +147,8 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
     URL.revokeObjectURL(url);
   };
 
-  const existingCell = gridData.get(selectedCell);
+  // fmt = merged format for selected cell (for toolbar color indicators)
+  const existingCell = mergedData.get(selectedCell);
   const fmt          = existingCell?.format ?? {};
 
   const remoteCursors = new Map<string, { cell: string; color: string; name: string }>();
@@ -216,7 +241,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
       {/* Grid */}
       <Grid
-        data={gridData}
+        data={mergedData}
         onCellChange={handleCellChange}
         onSelectionChange={handleSelectionChange}
         colWidths={colWidths}

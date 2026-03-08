@@ -191,23 +191,6 @@ export default function Toolbar({
       flexShrink: 0,
       userSelect: 'none',
     }}>
-      {/* Font family (display only) */}
-      <select
-        style={{
-          height: 26, padding: '0 6px', minWidth: 80,
-          border: '1.5px solid var(--border)',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: 12, color: 'var(--text-primary)',
-          background: 'var(--surface)', cursor: 'pointer', outline: 'none',
-        }}
-        defaultValue="Inter"
-        suppressHydrationWarning
-      >
-        {['Inter', 'Arial', 'Georgia', 'Courier New', 'Times New Roman'].map(f => (
-          <option key={f} value={f}>{f}</option>
-        ))}
-      </select>
-
       {/* Font size */}
       <select
         value={fontSize}
