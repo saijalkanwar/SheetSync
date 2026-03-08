@@ -104,14 +104,39 @@ function ColorDropdown({ colors, onPick, label, currentColor, icon }: {
   icon: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  useOutsideClick(wrapRef, () => setOpen(false));
+  const [dropPos, setDropPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (
+        dropRef.current && !dropRef.current.contains(e.target as Node) &&
+        btnRef.current  && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(o => !o);
+  };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-      {/* Main button */}
+    <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+      {/* Main toggle button */}
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={toggle}
         suppressHydrationWarning
         style={{
           width: 32, height: 28, display: 'flex', flexDirection: 'column',
@@ -128,17 +153,27 @@ function ColorDropdown({ colors, onPick, label, currentColor, icon }: {
         <div style={{ width: 14, height: 3, background: currentColor ?? '#ea4335', borderRadius: 1 }} />
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 400,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
-          padding: 10, animation: 'fadeIn 0.1s ease-out',
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      {/* Palette — rendered at fixed position so nothing clips it */}
+      {open && dropPos && (
+        <div
+          ref={dropRef}
+          style={{
+            position: 'fixed',
+            top: dropPos.top,
+            left: dropPos.left,
+            zIndex: 9999,
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 12,
+            animation: 'fadeIn 0.1s ease-out',
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             {label}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 18px)', gap: 3 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 22px)', gap: 4 }}>
             {colors.map(c => (
               <button
                 key={c}
@@ -146,15 +181,22 @@ function ColorDropdown({ colors, onPick, label, currentColor, icon }: {
                 suppressHydrationWarning
                 title={c}
                 style={{
-                  width: 18, height: 18, borderRadius: 3,
+                  width: 22, height: 22, borderRadius: 4,
                   background: c,
                   border: c === currentColor
-                    ? '2px solid var(--primary)'
-                    : c === '#ffffff' ? '1px solid #ddd' : '1px solid rgba(0,0,0,0.1)',
-                  cursor: 'pointer', transition: 'transform 0.1s',
+                    ? '3px solid var(--primary)'
+                    : c === '#ffffff' ? '1px solid #ddd' : '1px solid rgba(0,0,0,0.12)',
+                  cursor: 'pointer', transition: 'transform 0.1s, box-shadow 0.1s',
+                  outline: 'none',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.3)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'scale(1.3)';
+                  (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+                  (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                }}
               />
             ))}
           </div>
